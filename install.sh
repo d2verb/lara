@@ -23,10 +23,10 @@ else
     RED='' GREEN='' YELLOW='' BOLD='' RESET=''
 fi
 
-info()  { printf "${GREEN}[lara]${RESET} %s\n" "$1"; }
-warn()  { printf "${YELLOW}[lara]${RESET} %s\n" "$1"; }
-error() { printf "${RED}[lara]${RESET} %s\n" "$1" >&2; exit 1; }
-step()  { printf "\n${BOLD}[%s]${RESET} %s\n" "$1" "$2"; }
+info()  { printf '%s[lara]%s %s\n' "$GREEN" "$RESET" "$1"; }
+warn()  { printf '%s[lara]%s %s\n' "$YELLOW" "$RESET" "$1"; }
+error() { printf '%s[lara]%s %s\n' "$RED" "$RESET" "$1" >&2; exit 1; }
+step()  { printf '\n%s[%s]%s %s\n' "$BOLD" "$1" "$RESET" "$2"; }
 
 # --- Parse arguments ---
 # First non-flag argument is the project name; the rest are passed to `laravel new`
@@ -43,7 +43,7 @@ for arg in "$@"; do
 done
 
 if [ -z "$PROJECT_NAME" ]; then
-    printf "${BOLD}Project name: ${RESET}" > /dev/tty
+    printf '%sProject name: %s' "$BOLD" "$RESET" > /dev/tty
     read -r PROJECT_NAME < /dev/tty
 fi
 
@@ -129,12 +129,24 @@ fi
 # --entrypoint "" skips entrypoint.sh (which would run config:cache in non-local mode).
 APP_IMAGE="${APP_NAME:-laravel}-app"
 mkdir -p src
+# shellcheck disable=SC2086
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
     laravel new /app --database=pgsql --bun $LARAVEL_FLAGS
 
-# Install S3 driver for RustFS
+# Install additional packages
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
-    composer require league/flysystem-aws-s3-v3 --no-interaction
+    sh -c "composer require league/flysystem-aws-s3-v3 --no-interaction && composer require --dev larastan/larastan --no-interaction"
+
+# Larastan config
+cat > src/phpstan.neon <<'PHPSTAN'
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app/
+    level: 5
+PHPSTAN
 
 cat >> .gitignore <<'GITIGNORE'
 docker-compose.override.yaml
@@ -178,20 +190,16 @@ sed -i.bak \
     -e "s|CACHE_STORE=.*|CACHE_STORE=redis|" \
     -e "s|SESSION_DRIVER=.*|SESSION_DRIVER=redis|" \
     -e "s|QUEUE_CONNECTION=.*|QUEUE_CONNECTION=redis|" \
+    -e "s|FILESYSTEM_DISK=.*|FILESYSTEM_DISK=s3|" \
+    -e "s|AWS_ACCESS_KEY_ID=.*|AWS_ACCESS_KEY_ID=laravel|" \
+    -e "s|AWS_SECRET_ACCESS_KEY=.*|AWS_SECRET_ACCESS_KEY=$S3_SECRET_KEY|" \
+    -e "s|AWS_DEFAULT_REGION=.*|AWS_DEFAULT_REGION=us-east-1|" \
+    -e "s|AWS_BUCKET=.*|AWS_BUCKET=laravel|" \
+    -e "s|AWS_USE_PATH_STYLE_ENDPOINT=.*|AWS_USE_PATH_STYLE_ENDPOINT=true|" \
     src/.env && rm -f src/.env.bak
 
-# Append S3/RustFS settings to src/.env
-cat >> src/.env <<ENV_EOF
-
-# S3 / RustFS
-FILESYSTEM_DISK=s3
-AWS_ACCESS_KEY_ID=laravel
-AWS_SECRET_ACCESS_KEY=$S3_SECRET_KEY
-AWS_DEFAULT_REGION=us-east-1
-AWS_BUCKET=laravel
-AWS_ENDPOINT=http://rustfs:9000
-AWS_USE_PATH_STYLE_ENDPOINT=true
-ENV_EOF
+# AWS_ENDPOINT is not in Laravel's default .env, so append it
+echo "AWS_ENDPOINT=http://rustfs:9000" >> src/.env
 
 info "Done."
 

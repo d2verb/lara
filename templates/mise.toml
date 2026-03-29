@@ -65,3 +65,7 @@ run = "docker compose exec app bun run dev"
 [tasks.format]
 description = "Run Laravel Pint code formatter"
 run = "docker compose exec app ./vendor/bin/pint"
+
+[tasks.lint]
+description = "Run static analysis with Larastan"
+run = "docker compose exec app ./vendor/bin/phpstan analyse"

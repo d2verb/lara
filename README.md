@@ -84,6 +84,7 @@ mise run migrate
 | `mise run bun <cmd>` | Run a Bun command |
 | `mise run frontend` | Start Vite dev server |
 | `mise run format` | Run Laravel Pint formatter |
+| `mise run lint` | Run static analysis (Larastan) |
 | `mise run build [tag]` | Build production Docker image |
 
 ## Tech Stack
