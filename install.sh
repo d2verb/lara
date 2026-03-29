@@ -152,6 +152,14 @@ parameters:
     level: 5
 PHPSTAN
 
+# Configure Vite dev server to bind to 0.0.0.0 (accessible from host via Docker port forward)
+for vite_config in src/vite.config.js src/vite.config.ts; do
+    if [ -f "$vite_config" ]; then
+        # Add server.host before the closing `});`
+        sed -i.bak 's|});|  server: { host: "0.0.0.0" },\n});|' "$vite_config" && rm -f "$vite_config.bak"
+    fi
+done
+
 cat >> .gitignore <<'GITIGNORE'
 docker-compose.override.yaml
 .env
