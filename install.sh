@@ -124,39 +124,49 @@ if [ ! -t 0 ]; then
     LARAVEL_FLAGS="$LARAVEL_FLAGS --no-interaction"
 fi
 
-docker compose run --rm --no-deps -T app \
-    laravel new /app/tmp --database=pgsql --bun $LARAVEL_FLAGS
-
-# Copy Laravel files into the project root.
-# - "* .[!.]* ..?*" matches all files including dotfiles (e.g. .env, .gitignore)
-# - Docker infra files are skipped (we already placed them in step 3)
-# - vendor/node_modules are skipped (they live in named Docker volumes
-#   and will be installed by entrypoint.sh on first startup)
-# - cp -a instead of mv because some directories already exist (bootstrap/, storage/)
-docker compose run --rm --no-deps -T app sh -c '
-    cd /app/tmp
-    for item in * .[!.]* ..?*; do
-        [ -e "$item" ] || continue
-        case "$item" in
-            Dockerfile|compose.yaml|Caddyfile|Caddyfile.prod|mise.toml|docker|.dockerignore) ;;
-            vendor|node_modules) ;;
-            *) cp -a "$item" /app/ ;;
-        esac
-    done
-    rm -rf /app/tmp
-'
+# Use `docker run` (not `docker compose run`) to avoid named volume mounts
+# that would make /app non-empty and cause `laravel new` to fail.
+# --entrypoint "" skips entrypoint.sh (which would run config:cache in non-local mode).
+APP_IMAGE="${APP_NAME:-laravel}-app"
+mkdir -p src
+docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
+    laravel new /app --database=pgsql --bun $LARAVEL_FLAGS
 
 # Install S3 driver for RustFS
-docker compose run --rm --no-deps -T app composer require league/flysystem-aws-s3-v3 --no-interaction
+docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
+    composer require league/flysystem-aws-s3-v3 --no-interaction
 
-echo "docker-compose.override.yaml" >> .gitignore
+cat >> .gitignore <<'GITIGNORE'
+docker-compose.override.yaml
+.env
+GITIGNORE
 
 info "Laravel project created."
 
 # --- Configure .env for Docker ---
 step "6/6" "Configuring .env for Docker..."
 
-# Patch Laravel-generated .env (already has APP_KEY and Laravel defaults)
+# Root .env — read by Docker Compose for service configuration
+cat > .env <<ENV_EOF
+# Docker Compose variables (used by compose.yaml)
+APP_PORT=8080
+VITE_PORT=5173
+USER_UID=$USER_UID
+USER_GID=$USER_GID
+XDEBUG_MODE=off
+DB_DATABASE=laravel
+DB_USERNAME=laravel
+DB_PASSWORD=$DB_PASSWORD
+DB_FORWARD_PORT=5432
+REDIS_FORWARD_PORT=6379
+AWS_ACCESS_KEY_ID=laravel
+AWS_SECRET_ACCESS_KEY=$S3_SECRET_KEY
+AWS_BUCKET=laravel
+S3_PORT=9000
+S3_CONSOLE_PORT=9001
+ENV_EOF
+
+# src/.env — read by Laravel for application configuration
 sed -i.bak \
     -e "s|DB_HOST=127.0.0.1|DB_HOST=postgres|" \
     -e "s|DB_HOST=localhost|DB_HOST=postgres|" \
@@ -168,19 +178,10 @@ sed -i.bak \
     -e "s|CACHE_STORE=.*|CACHE_STORE=redis|" \
     -e "s|SESSION_DRIVER=.*|SESSION_DRIVER=redis|" \
     -e "s|QUEUE_CONNECTION=.*|QUEUE_CONNECTION=redis|" \
-    .env && rm -f .env.bak
+    src/.env && rm -f src/.env.bak
 
-# Append variables that Laravel doesn't generate
-cat >> .env <<ENV_EOF
-
-# Docker
-APP_PORT=80
-VITE_PORT=5173
-USER_UID=$USER_UID
-USER_GID=$USER_GID
-XDEBUG_MODE=off
-DB_FORWARD_PORT=5432
-REDIS_FORWARD_PORT=6379
+# Append S3/RustFS settings to src/.env
+cat >> src/.env <<ENV_EOF
 
 # S3 / RustFS
 FILESYSTEM_DISK=s3
@@ -190,8 +191,6 @@ AWS_DEFAULT_REGION=us-east-1
 AWS_BUCKET=laravel
 AWS_ENDPOINT=http://rustfs:9000
 AWS_USE_PATH_STYLE_ENDPOINT=true
-S3_PORT=9000
-S3_CONSOLE_PORT=9001
 ENV_EOF
 
 info "Done."
@@ -209,7 +208,7 @@ ${GREEN}============================================================${RESET}
     mise run dev          ${YELLOW}# Start all services${RESET}
     mise run migrate      ${YELLOW}# Run database migrations${RESET}
 
-    Open ${BOLD}http://localhost${RESET} in your browser.
+    Open ${BOLD}http://localhost:8080${RESET} in your browser.
 
   ${BOLD}Useful commands:${RESET}
 

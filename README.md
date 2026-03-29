@@ -23,6 +23,32 @@ When run via `curl | sh`, `--no-interaction` is automatically added. Pass flags 
 - [Docker](https://docs.docker.com/get-docker/) (with Compose V2)
 - [mise](https://mise.jdx.dev/) (optional, for task runner)
 
+## Project Structure
+
+```
+myapp/
+├── docker/
+│   └── app/
+│       ├── Dockerfile       # Multi-stage (dev / prod)
+│       ├── entrypoint.sh    # Container entrypoint
+│       ├── Caddyfile        # FrankenPHP config (dev)
+│       ├── Caddyfile.prod   # FrankenPHP config (prod)
+│       └── php/
+│           ├── php.ini      # PHP config (opcache, upload limits)
+│           └── xdebug.ini   # Xdebug config (dev only)
+├── src/                     # Laravel source code
+│   ├── app/
+│   ├── routes/
+│   ├── config/
+│   ├── public/
+│   └── ...
+├── compose.yaml             # Docker Compose services
+├── mise.toml                # Task runner
+└── .dockerignore
+```
+
+Docker configuration lives in `docker/app/`. Laravel code lives in `src/`.
+
 ## Usage
 
 ```sh
@@ -34,8 +60,8 @@ mise run dev
 # Run database migrations
 mise run migrate
 
-# Open http://localhost in your browser
-# RustFS console: http://localhost:9001
+# Open http://localhost:8080 in your browser
+# RustFS console: http://localhost:8080:9001
 ```
 
 ## Available Tasks
@@ -75,7 +101,7 @@ mise run migrate
 
 - **base** — PHP extensions, Composer, Bun, non-root user setup
 - **dev** — Adds Xdebug, Laravel Installer, mounts source code via bind mount
-- **prod** — Copies app code, optimizes autoloader, caches routes/views/events
+- **prod** — Copies `src/` only, optimizes autoloader, caches routes/views/events
 
 ### Services (compose.yaml)
 
@@ -94,10 +120,10 @@ Build the production image:
 ```sh
 mise run build myapp:v1.0.0
 # or
-docker build --target prod -t myapp:v1.0.0 .
+docker build -f docker/app/Dockerfile --target prod -t myapp:v1.0.0 .
 ```
 
-The production image is self-contained with cached routes, views, events, and compiled frontend assets. Config is cached on first startup via the entrypoint.
+The production image contains only `src/` with cached routes, views, events, and compiled frontend assets. Config is cached on first startup via the entrypoint.
 
 Configure environment variables at runtime (switch to real AWS S3 by omitting `AWS_ENDPOINT`):
 
@@ -107,7 +133,7 @@ docker run -e APP_KEY=base64:... \
   -e REDIS_HOST=your-elasticache-endpoint \
   -e AWS_ACCESS_KEY_ID=... \
   -e AWS_SECRET_ACCESS_KEY=... \
-  -p 80:80 myapp:v1.0.0
+  -p 8080:8080 myapp:v1.0.0
 ```
 
 ## License

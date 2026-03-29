@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     git \
     curl \
+    gosu \
     libpq-dev \
     libzip-dev \
     libicu-dev \
@@ -34,7 +35,6 @@ RUN install-php-extensions \
 # Non-root user matching host UID/GID
 RUN groupadd --force --gid ${USER_GID} appuser \
     && useradd --non-unique --uid ${USER_UID} --gid ${USER_GID} --create-home appuser \
-    && setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp \
     && chown -R appuser:appuser /data/caddy /config/caddy
 
 # Composer
@@ -51,11 +51,6 @@ ENV PATH="${COMPOSER_HOME}/vendor/bin:${PATH}"
 
 WORKDIR /app
 
-# Pre-create named volume mount points with correct ownership.
-# Without this, Docker creates them as root and appuser can't write to them.
-RUN mkdir -p /app/vendor /app/node_modules \
-    && chown -R appuser:appuser /app
-
 # ============================================================
 # Stage 2: dev -- local development
 # ============================================================
@@ -68,15 +63,12 @@ USER appuser
 RUN composer global require laravel/installer
 USER root
 
-RUN echo "xdebug.mode=\${XDEBUG_MODE:-off}" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
-    && echo "xdebug.client_host=host.docker.internal" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
-
-COPY Caddyfile /etc/caddy/Caddyfile
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+# Caddyfile and xdebug.ini are bind-mounted via compose.yaml for live editing.
+# Entrypoint is baked into the image (rarely changes).
+COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-USER appuser
-
+# Entrypoint runs as root, then drops to appuser via gosu
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
 
@@ -85,15 +77,14 @@ CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
 # ============================================================
 FROM base AS prod
 
-# Copy Caddyfile and entrypoint first (as root, these need root ownership in /etc and /usr/local)
-COPY Caddyfile.prod /etc/caddy/Caddyfile
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY docker/app/php/php.ini /usr/local/etc/php/conf.d/app-php.ini
+COPY docker/app/Caddyfile.prod /etc/caddy/Caddyfile
+COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Switch to non-root user for all app operations
 USER appuser
 
-COPY --chown=appuser:appuser . /app
+COPY --chown=appuser:appuser ./src /app
 
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
@@ -105,8 +96,6 @@ RUN bun install && bun run build
 RUN php artisan route:cache \
     && php artisan view:cache \
     && php artisan event:cache
-
-RUN rm -rf tests .git .github node_modules
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]

@@ -1,6 +1,6 @@
 [tasks.dev]
 description = "Start all services"
-run = "docker compose up -d && echo 'Ready at http://localhost'"
+run = "docker compose up -d && echo 'Ready at http://localhost:8080'"
 
 [tasks.down]
 description = "Stop all services"
@@ -12,7 +12,7 @@ run = "docker compose restart"
 
 [tasks.build]
 description = "Build production Docker image"
-run = "docker build --target prod -t ${1:-laravel-app:latest} ."
+run = "docker build -f docker/app/Dockerfile --target prod -t ${1:-laravel-app:latest} ."
 
 [tasks.logs]
 description = "Tail container logs"

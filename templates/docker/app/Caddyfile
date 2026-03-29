@@ -3,7 +3,7 @@
 	order php_server before file_server
 }
 
-:80 {
+:8080 {
 	root * /app/public
 
 	php_server
