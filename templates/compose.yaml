@@ -16,7 +16,6 @@ services:
       - .:/app
       - vendor:/app/vendor           # named volume for performance (avoids slow bind mount on macOS)
       - node_modules:/app/node_modules # same as above
-      - garage_credentials:/tmp/garage # S3 credentials written by garage-init, read by entrypoint.sh
     environment:
       APP_ENV: "${APP_ENV:-local}"
       SERVER_NAME: ":80"
@@ -55,36 +54,43 @@ services:
       timeout: 3s
       retries: 5
 
-  garage:
-    image: dxflrs/garage:v1.1.0
-    ports:
-      - "${GARAGE_S3_PORT:-3900}:3900"
-      - "${GARAGE_ADMIN_PORT:-3903}:3903"
-    volumes:
-      - ./docker/garage/garage.toml:/etc/garage.toml:ro
-      - garage_meta:/var/lib/garage/meta
-      - garage_data:/var/lib/garage/data
-
-  garage-init:
-    image: curlimages/curl:8.18.0
-    user: "0:0" # curlimages/curl defaults to non-root; root needed to write to shared volume
-    restart: "on-failure:3"
-    depends_on:
-      - garage
-    volumes:
-      - ./docker/garage/init-garage.sh:/init-garage.sh:ro
-      - garage_credentials:/tmp/garage
-    entrypoint: ["/bin/sh", "/init-garage.sh"]
+  rustfs:
+    image: rustfs/rustfs:latest
+    command: server /data --console-address ":9001"
     environment:
-      GARAGE_ADMIN_URL: "http://garage:3903"
-      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-lara-admin-token}"
-      GARAGE_BUCKET_NAME: "${AWS_BUCKET:-laravel}"
+      RUSTFS_ROOT_USER: "${AWS_ACCESS_KEY_ID:-laravel}"
+      RUSTFS_ROOT_PASSWORD: "${AWS_SECRET_ACCESS_KEY:-laravelS3secret}"
+    ports:
+      - "${S3_PORT:-9000}:9000"
+      - "${S3_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:9000 | grep -q 403"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # One-shot: creates the default S3 bucket on first startup
+  rustfs-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      mc alias set local http://rustfs:9000 $${AWS_ACCESS_KEY_ID} $${AWS_SECRET_ACCESS_KEY} &&
+      mc mb --ignore-existing local/$${AWS_BUCKET} &&
+      echo 'Bucket ready: '$${AWS_BUCKET}
+      "
+    environment:
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-laravel}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-laravelS3secret}"
+      AWS_BUCKET: "${AWS_BUCKET:-laravel}"
 
 volumes:
   postgres_data:
   redis_data:
-  garage_meta:
-  garage_data:
-  garage_credentials:
+  rustfs_data:
   vendor:
   node_modules:

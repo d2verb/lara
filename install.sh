@@ -100,14 +100,11 @@ fi
 
 cd "$PROJECT_DIR"
 
-# Generate secrets and configure garage.toml
+# Generate secrets
 DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
-GARAGE_RPC_SECRET=$(openssl rand -hex 32)
-GARAGE_ADMIN_TOKEN="lara-admin-$(openssl rand -hex 8)"
+S3_SECRET_KEY=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
 USER_UID=$(id -u)
 USER_GID=$(id -g)
-
-sed -i.bak -e "s|__GARAGE_RPC_SECRET__|$GARAGE_RPC_SECRET|" -e "s|__GARAGE_ADMIN_TOKEN__|$GARAGE_ADMIN_TOKEN|" docker/garage/garage.toml && rm -f docker/garage/garage.toml.bak
 
 info "Template files ready."
 
@@ -149,7 +146,7 @@ docker compose run --rm --no-deps -T app sh -c '
     rm -rf /app/tmp
 '
 
-# Install S3 driver for Garage
+# Install S3 driver for RustFS
 docker compose run --rm --no-deps -T app composer require league/flysystem-aws-s3-v3 --no-interaction
 
 echo "docker-compose.override.yaml" >> .gitignore
@@ -185,18 +182,16 @@ XDEBUG_MODE=off
 DB_FORWARD_PORT=5432
 REDIS_FORWARD_PORT=6379
 
-# S3 / Garage (credentials are injected at runtime by entrypoint.sh via shared volume)
+# S3 / RustFS
 FILESYSTEM_DISK=s3
-AWS_DEFAULT_REGION=garage
+AWS_ACCESS_KEY_ID=laravel
+AWS_SECRET_ACCESS_KEY=$S3_SECRET_KEY
+AWS_DEFAULT_REGION=us-east-1
 AWS_BUCKET=laravel
-AWS_ENDPOINT=http://garage:3900
+AWS_ENDPOINT=http://rustfs:9000
 AWS_USE_PATH_STYLE_ENDPOINT=true
-
-# Garage (used by compose.yaml)
-GARAGE_S3_PORT=3900
-GARAGE_ADMIN_PORT=3903
-GARAGE_ADMIN_TOKEN=$GARAGE_ADMIN_TOKEN
-GARAGE_RPC_SECRET=$GARAGE_RPC_SECRET
+S3_PORT=9000
+S3_CONSOLE_PORT=9001
 ENV_EOF
 
 info "Done."
