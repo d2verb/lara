@@ -1,0 +1,90 @@
+name: "${APP_NAME:-laravel}"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        USER_UID: "${USER_UID:-1000}"
+        USER_GID: "${USER_GID:-1000}"
+    ports:
+      - "${APP_PORT:-80}:80"
+      - "${VITE_PORT:-5173}:5173"
+    volumes:
+      - .:/app
+      - vendor:/app/vendor           # named volume for performance (avoids slow bind mount on macOS)
+      - node_modules:/app/node_modules # same as above
+      - garage_credentials:/tmp/garage # S3 credentials written by garage-init, read by entrypoint.sh
+    environment:
+      APP_ENV: "${APP_ENV:-local}"
+      SERVER_NAME: ":80"
+      XDEBUG_MODE: "${XDEBUG_MODE:-off}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: "${DB_DATABASE:-laravel}"
+      POSTGRES_USER: "${DB_USERNAME:-laravel}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-secret}"
+    ports:
+      - "${DB_FORWARD_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-laravel}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-bookworm
+    ports:
+      - "${REDIS_FORWARD_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  garage:
+    image: dxflrs/garage:v1.1.0
+    ports:
+      - "${GARAGE_S3_PORT:-3900}:3900"
+      - "${GARAGE_ADMIN_PORT:-3903}:3903"
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+
+  garage-init:
+    image: curlimages/curl:8.18.0
+    user: "0:0" # curlimages/curl defaults to non-root; root needed to write to shared volume
+    restart: "on-failure:3"
+    depends_on:
+      - garage
+    volumes:
+      - ./docker/garage/init-garage.sh:/init-garage.sh:ro
+      - garage_credentials:/tmp/garage
+    entrypoint: ["/bin/sh", "/init-garage.sh"]
+    environment:
+      GARAGE_ADMIN_URL: "http://garage:3903"
+      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-lara-admin-token}"
+      GARAGE_BUCKET_NAME: "${AWS_BUCKET:-laravel}"
+
+volumes:
+  postgres_data:
+  redis_data:
+  garage_meta:
+  garage_data:
+  garage_credentials:
+  vendor:
+  node_modules:
