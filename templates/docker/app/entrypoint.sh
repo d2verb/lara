@@ -1,14 +1,8 @@
 #!/bin/sh
 set -e
 
-# Fix ownership of named volumes (Docker creates them as root)
-if [ "$(id -u)" = "0" ]; then
-    chown appuser:appuser /app/vendor /app/node_modules
-    exec gosu appuser "$0" "$@"
-fi
-
 if [ "$APP_ENV" = "local" ] || [ "$APP_ENV" = "development" ]; then
-    # Install dependencies if named volumes are empty (first run)
+    # Install dependencies if missing (first run)
     if [ -f /app/composer.json ] && [ ! -f /app/vendor/autoload.php ]; then
         echo "Installing Composer dependencies..."
         composer install --no-interaction

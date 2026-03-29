@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     git \
     curl \
-    gosu \
     libpq-dev \
     libzip-dev \
     libicu-dev \
@@ -63,12 +62,11 @@ USER appuser
 RUN composer global require laravel/installer
 USER root
 
-# Caddyfile and xdebug.ini are bind-mounted via compose.yaml for live editing.
-# Entrypoint is baked into the image (rarely changes).
 COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Entrypoint runs as root, then drops to appuser via gosu
+USER appuser
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
 

@@ -128,7 +128,8 @@ fi
 # Use `docker run` (not `docker compose run`) to avoid named volume mounts
 # that would make /app non-empty and cause `laravel new` to fail.
 # --entrypoint "" skips entrypoint.sh (which would run config:cache in non-local mode).
-APP_IMAGE="${APP_NAME:-laravel}-app"
+# Docker Compose uses directory name as project name, image = <dirname>-app
+APP_IMAGE="$(basename "$(pwd)")-app"
 mkdir -p src
 # shellcheck disable=SC2086
 # DB_CONNECTION=sqlite prevents laravel new from attempting to connect to PostgreSQL
