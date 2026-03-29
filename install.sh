@@ -14,11 +14,12 @@ BRANCH="main"
 
 # --- Colors ---
 if [ -t 1 ]; then
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[0;33m'
-    BOLD='\033[1m'
-    RESET='\033[0m'
+    ESC=$(printf '\033')
+    RED="${ESC}[0;31m"
+    GREEN="${ESC}[0;32m"
+    YELLOW="${ESC}[0;33m"
+    BOLD="${ESC}[1m"
+    RESET="${ESC}[0m"
 else
     RED='' GREEN='' YELLOW='' BOLD='' RESET=''
 fi
@@ -130,7 +131,9 @@ fi
 APP_IMAGE="${APP_NAME:-laravel}-app"
 mkdir -p src
 # shellcheck disable=SC2086
-docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
+# DB_CONNECTION=sqlite prevents laravel new from attempting to connect to PostgreSQL
+# (which isn't running yet). The actual DB config is set in src/.env later.
+docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -e DB_CONNECTION=sqlite -v "$(pwd)/src:/app" "$APP_IMAGE" \
     laravel new /app --database=pgsql --bun $LARAVEL_FLAGS
 
 # Install additional packages
