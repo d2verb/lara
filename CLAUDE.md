@@ -29,8 +29,9 @@ templates/              # Copied into generated projects
 ```sh
 LARA_LOCAL=./templates ./install.sh testapp --vue --pest
 cd testapp && docker compose up -d
-# Wait ~50s for entrypoint to install deps
-docker compose exec app php artisan migrate --force
+# Wait ~50s for entrypoint to install deps, then:
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8080  # → 200
+docker compose exec app php artisan migrate --force           # → DONE
 ```
 
 Clean up: `cd testapp && docker compose down -v && cd .. && rm -rf testapp`
@@ -49,18 +50,13 @@ Lint: `shellcheck install.sh`
 
 **Port 8080 (not 80)**: Avoids `setcap` requirement for non-root user binding to privileged ports. Cloud Run defaults to 8080.
 
-**No named volumes for vendor/node_modules**: Plain bind mount via `./src:/app`. IDE sees vendor for autocompletion. Eliminates gosu/chown complexity.
-
 **Dev config files are bind-mounted**: Caddyfile, php.ini, xdebug.ini are mounted `:ro` in compose.yaml for live editing. Only entrypoint.sh is COPY'd into the dev image. Prod COPY's everything.
 
-## install.sh Conventions
+**No `name:` in compose.yaml**: Docker Compose uses directory name as project name, making volumes unique per project (e.g., `myapp_postgres_data`).
 
-- POSIX `sh` (not bash). Use `shellcheck` to validate.
-- `$LARAVEL_FLAGS` is intentionally unquoted for word splitting (SC2086 suppressed).
-- Color output uses `ESC=$(printf '\033')` for portability (not `\033` literals in format strings).
-- `sed -i.bak` + `rm .bak` pattern for macOS/Linux compatibility.
-- Secrets generated with `openssl rand -base64 24 | tr -d '/+=' | head -c 32`.
+## Gotchas
 
-## Compose Project Naming
-
-No `name:` in compose.yaml. Docker Compose uses the directory name automatically, making volumes unique per project (e.g., `myapp_postgres_data`).
+- **`laravel new` outputs DB connection errors during install** — expected. `DB_CONNECTION=sqlite` is passed to prevent PostgreSQL connection attempts, but the starter kit may still try migrations. Install completes successfully regardless.
+- **Vite `--no-ansi` error during install** — Vite 8.x doesn't support this flag. `laravel new` passes it internally. Cosmetic; frontend build runs via `mise run frontend` in dev.
+- **`password authentication failed` after migrate** — likely a stale Postgres volume from a previous project. Run `docker compose down -v && docker compose up -d` to reset.
+- **`sed` patches in install.sh depend on Laravel's `.env` format** — if Laravel changes variable names in a major version, sed patterns will need updating. Values (`s|VAR=.*|VAR=newval|`) are resilient to default value changes.
