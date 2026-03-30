@@ -139,7 +139,7 @@ docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -e DB_CONNECTION=sqlite
 
 # Install additional packages
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
-    sh -c "composer require league/flysystem-aws-s3-v3 --no-interaction && composer require --dev larastan/larastan --no-interaction"
+    sh -c "composer require league/flysystem-aws-s3-v3 opcodesio/log-viewer --no-interaction && composer require --dev larastan/larastan --no-interaction"
 
 # Larastan config
 cat > src/phpstan.neon <<'PHPSTAN'
