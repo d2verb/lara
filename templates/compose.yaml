@@ -69,6 +69,16 @@ services:
       timeout: 3s
       retries: 5
 
+  pgweb:
+    image: sosedoff/pgweb
+    ports:
+      - "${PGWEB_PORT:-8081}:8081"
+    environment:
+      PGWEB_DATABASE_URL: "postgres://${DB_USERNAME:-laravel}:${DB_PASSWORD:-secret}@postgres:5432/${DB_DATABASE:-laravel}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # One-shot: creates the default S3 bucket on first startup
   rustfs-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z

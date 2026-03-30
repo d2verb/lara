@@ -61,7 +61,8 @@ mise run dev
 mise run migrate
 
 # Open http://localhost:8080 in your browser
-# RustFS console: http://localhost:8080:9001
+# pgweb (DB admin): http://localhost:8081
+# RustFS console: http://localhost:9001
 ```
 
 ## Available Tasks
@@ -111,6 +112,7 @@ mise run migrate
 | app | FrankenPHP + Laravel | 80, 5173 |
 | postgres | PostgreSQL database | 5432 |
 | redis | Cache / Sessions / Queues | 6379 |
+| pgweb | PostgreSQL web UI | 8081 |
 | rustfs | S3-compatible storage + web console | 9000, 9001 |
 | rustfs-init | One-shot: creates the default S3 bucket | — |
 
