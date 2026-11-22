@@ -135,7 +135,11 @@ mkdir -p src
 # DB_CONNECTION=sqlite prevents laravel new from attempting to connect to PostgreSQL
 # (which isn't running yet). The actual DB config is set in src/.env later.
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -e DB_CONNECTION=sqlite -v "$(pwd)/src:/app" "$APP_IMAGE" \
-    laravel new /app --database=pgsql --bun $LARAVEL_FLAGS
+    laravel new /app --database=pgsql --no-node $LARAVEL_FLAGS
+
+# --no-node: starter kits call `npm install` directly even with --bun, and the image has no npm
+docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
+    sh -c "bun install && bun run build"
 
 # Install additional packages
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
