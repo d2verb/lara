@@ -1,3 +1,4 @@
+# All ports bind to 127.0.0.1: pgweb and Redis have no auth, and Docker bypasses host firewalls
 services:
   app:
     build:
@@ -8,8 +9,8 @@ services:
         USER_UID: "${USER_UID:-1000}"
         USER_GID: "${USER_GID:-1000}"
     ports:
-      - "${APP_PORT:-8080}:8080"
-      - "${VITE_PORT:-5173}:5173"
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+      - "127.0.0.1:${VITE_PORT:-5173}:5173"
     volumes:
       - ./src:/app
       - ./docker/app/Caddyfile:/etc/caddy/Caddyfile:ro
@@ -31,7 +32,7 @@ services:
       POSTGRES_USER: "${DB_USERNAME:-laravel}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-secret}"
     ports:
-      - "${DB_FORWARD_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_FORWARD_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
@@ -43,7 +44,7 @@ services:
   redis:
     image: redis:8-trixie
     ports:
-      - "${REDIS_FORWARD_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_FORWARD_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -53,14 +54,14 @@ services:
       retries: 5
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.6
     command: server /data --console-address ":9001"
     environment:
       RUSTFS_ROOT_USER: "${AWS_ACCESS_KEY_ID:-laravel}"
       RUSTFS_ROOT_PASSWORD: "${AWS_SECRET_ACCESS_KEY:-laravelS3secret}"
     ports:
-      - "${S3_PORT:-9000}:9000"
-      - "${S3_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${S3_PORT:-9000}:9000"
+      - "127.0.0.1:${S3_CONSOLE_PORT:-9001}:9001"
     volumes:
       - rustfs_data:/data
     healthcheck:
@@ -70,9 +71,9 @@ services:
       retries: 5
 
   pgweb:
-    image: sosedoff/pgweb
+    image: sosedoff/pgweb:0.17.0
     ports:
-      - "${PGWEB_PORT:-8081}:8081"
+      - "127.0.0.1:${PGWEB_PORT:-8081}:8081"
     environment:
       PGWEB_DATABASE_URL: "postgres://${DB_USERNAME:-laravel}:${DB_PASSWORD:-secret}@postgres:5432/${DB_DATABASE:-laravel}?sslmode=disable"
     depends_on:

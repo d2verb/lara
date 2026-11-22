@@ -15,7 +15,7 @@ templates/              # Copied into generated projects
   mise.toml
   .dockerignore
   docker/app/
-    Dockerfile          # Multi-stage: base → dev / prod
+    Dockerfile          # Multi-stage: base → tools → dev / builder → prod
     entrypoint.sh
     Caddyfile           # Dev (bind-mounted)
     Caddyfile.prod      # Prod (COPY'd into image)
