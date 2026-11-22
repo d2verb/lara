@@ -25,7 +25,7 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:17-bookworm
+    image: postgres:19-trixie
     environment:
       POSTGRES_DB: "${DB_DATABASE:-laravel}"
       POSTGRES_USER: "${DB_USERNAME:-laravel}"
@@ -33,7 +33,7 @@ services:
     ports:
       - "${DB_FORWARD_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-laravel}"]
       interval: 5s
@@ -41,7 +41,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-bookworm
+    image: redis:8-trixie
     ports:
       - "${REDIS_FORWARD_PORT:-6379}:6379"
     volumes:
@@ -81,14 +81,14 @@ services:
 
   # One-shot: creates the default S3 bucket on first startup
   rustfs-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: rustfs/rc:v0.1.38
     depends_on:
       rustfs:
         condition: service_healthy
     entrypoint: >
       sh -c "
-      mc alias set local http://rustfs:9000 $${AWS_ACCESS_KEY_ID} $${AWS_SECRET_ACCESS_KEY} &&
-      mc mb --ignore-existing local/$${AWS_BUCKET} &&
+      rc alias set local http://rustfs:9000 $${AWS_ACCESS_KEY_ID} $${AWS_SECRET_ACCESS_KEY} &&
+      rc bucket create --ignore-existing local/$${AWS_BUCKET} &&
       echo 'Bucket ready: '$${AWS_BUCKET}
       "
     environment:

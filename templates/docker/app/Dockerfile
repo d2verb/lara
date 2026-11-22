@@ -2,7 +2,7 @@
 # Stage 1: base -- shared between dev and prod
 # ============================================================
 # PHP 8.5 released Nov 2025. Change to php8.4 if needed.
-FROM dunglas/frankenphp:1-php8.5-bookworm AS base
+FROM dunglas/frankenphp:1-php8.5-trixie AS base
 
 ARG USER_UID=1000
 ARG USER_GID=1000
