@@ -141,9 +141,49 @@ docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -e DB_CONNECTION=sqlite
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
     sh -c "bun install && bun run build"
 
-# Install additional packages
+# Install additional packages.
+# Telescope is local-only (https://laravel.com/docs/telescope#local-only-installation).
+# vendor:publish instead of telescope:install, which would also register it in bootstrap/providers.php.
+# make:provider registers LaraServiceProvider via Laravel's own API; its body is written below.
 docker run --rm --entrypoint "" -u "$USER_UID:$USER_GID" -v "$(pwd)/src:/app" "$APP_IMAGE" \
-    sh -c "composer require league/flysystem-aws-s3-v3 opcodesio/log-viewer --no-interaction && composer require --dev larastan/larastan --no-interaction"
+    sh -c "composer require league/flysystem-aws-s3-v3 --no-interaction \
+        && composer require --dev larastan/larastan laravel/telescope --no-interaction \
+        && php artisan vendor:publish --tag=telescope-provider --tag=telescope-config --tag=telescope-migrations \
+        && { test -f app/Providers/TelescopeServiceProvider.php && test -f config/telescope.php \
+            || { echo 'Telescope files were not published (tag names changed?)' >&2; exit 1; }; } \
+        && composer config --json --merge extra.laravel.dont-discover '[\"laravel/telescope\"]' \
+        && composer dump-autoload --no-interaction \
+        && php artisan make:provider LaraServiceProvider"
+
+# Our own provider instead of patching AppServiceProvider, so upstream changes can't break it
+cat > src/app/Providers/LaraServiceProvider.php <<'PHP'
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\ServiceProvider;
+
+class LaraServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        if ($this->app->environment('local') && class_exists(\Laravel\Telescope\TelescopeServiceProvider::class)) {
+            // Overrides LogWatcher 'level' in config/telescope.php (default: error). Change it here, not there.
+            config(['telescope.watchers.'.\Laravel\Telescope\Watchers\LogWatcher::class.'.level' => 'debug']);
+
+            $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
+            $this->app->register(TelescopeServiceProvider::class);
+        }
+    }
+
+    public function boot(): void
+    {
+        // Throw on N+1 queries outside production
+        Model::preventLazyLoading(! $this->app->isProduction());
+    }
+}
+PHP
 
 # Larastan config
 cat > src/phpstan.neon <<'PHPSTAN'
@@ -155,14 +195,6 @@ parameters:
         - app/
     level: 5
 PHPSTAN
-
-# Configure Vite dev server to bind to 0.0.0.0 (accessible from host via Docker port forward)
-for vite_config in src/vite.config.js src/vite.config.ts; do
-    if [ -f "$vite_config" ]; then
-        # Add server.host before the closing `});`
-        sed -i.bak 's|});|  server: { host: "0.0.0.0" },\n});|' "$vite_config" && rm -f "$vite_config.bak"
-    fi
-done
 
 cat >> .gitignore <<'GITIGNORE'
 docker-compose.override.yaml
@@ -214,6 +246,14 @@ sed -i.bak \
     -e "s|AWS_BUCKET=.*|AWS_BUCKET=laravel|" \
     -e "s|AWS_USE_PATH_STYLE_ENDPOINT=.*|AWS_USE_PATH_STYLE_ENDPOINT=true|" \
     src/.env && rm -f src/.env.bak
+
+# sed succeeds even when nothing matches, so verify each value landed
+for kv in DB_HOST=postgres DB_DATABASE=laravel DB_USERNAME=laravel "DB_PASSWORD=$DB_PASSWORD" \
+    REDIS_HOST=redis CACHE_STORE=redis SESSION_DRIVER=redis QUEUE_CONNECTION=redis FILESYSTEM_DISK=s3 \
+    AWS_ACCESS_KEY_ID=laravel "AWS_SECRET_ACCESS_KEY=$S3_SECRET_KEY" AWS_DEFAULT_REGION=us-east-1 \
+    AWS_BUCKET=laravel AWS_USE_PATH_STYLE_ENDPOINT=true; do
+    grep -qx "$kv" src/.env || error "Failed to set ${kv%%=*} in src/.env (Laravel's .env format changed?)"
+done
 
 # AWS_ENDPOINT is not in Laravel's default .env, so append it
 echo "AWS_ENDPOINT=http://rustfs:9000" >> src/.env

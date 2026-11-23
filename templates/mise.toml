@@ -44,11 +44,15 @@ run = "docker compose exec app php artisan tinker"
 
 [tasks.test]
 description = "Run test suite"
-run = "docker compose exec app php artisan test"
+run = "docker compose exec -e APP_ENV=testing app php artisan test"
 
 [tasks.test-coverage]
 description = "Run tests with coverage"
-run = "docker compose exec -e XDEBUG_MODE=coverage app php artisan test --coverage"
+run = "docker compose exec -e APP_ENV=testing -e XDEBUG_MODE=coverage app php artisan test --coverage"
+
+[tasks.telescope-prune]
+description = "Delete Telescope entries older than 24 hours"
+run = "docker compose exec app php artisan telescope:prune"
 
 [tasks.composer]
 description = "Run a Composer command"
@@ -60,7 +64,7 @@ run = "docker compose exec app bun"
 
 [tasks.frontend]
 description = "Start Vite dev server"
-run = "docker compose exec app bun run dev"
+run = "docker compose exec app bun run dev --host 0.0.0.0"
 
 [tasks.format]
 description = "Run Laravel Pint code formatter"

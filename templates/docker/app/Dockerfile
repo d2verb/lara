@@ -87,6 +87,9 @@ RUN php artisan route:cache \
 # ============================================================
 FROM base AS prod
 
+# Container filesystems are ephemeral; send logs to the platform's log collector
+ENV LOG_CHANNEL=stderr
+
 # Base image loads no php.ini, so PHP defaults to display_errors=On
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 COPY docker/app/php/php.ini /usr/local/etc/php/conf.d/app-php.ini
