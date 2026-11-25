@@ -16,6 +16,12 @@ With starter kit options:
 curl -sL https://raw.githubusercontent.com/d2verb/lara/main/install.sh | sh -s myapp --vue --pest
 ```
 
+To install into the current directory, pass `.` as the project name. If the directory is not empty, you are asked whether to abort or overwrite (overwrite deletes `src/`); without a terminal it aborts.
+
+```sh
+curl -sL https://raw.githubusercontent.com/d2verb/lara/main/install.sh | sh -s . --vue --pest
+```
+
 When run via `curl | sh`, `--no-interaction` is automatically added. Pass flags explicitly (e.g. `--vue`, `--react`, `--livewire`) to select a starter kit.
 
 ## Prerequisites

@@ -7,6 +7,7 @@ set -e
 # Usage:
 #   curl -sL https://raw.githubusercontent.com/d2verb/lara/main/install.sh | sh -s myapp
 #   curl -sL https://raw.githubusercontent.com/d2verb/lara/main/install.sh | sh -s myapp --vue --pest
+#   curl -sL https://raw.githubusercontent.com/d2verb/lara/main/install.sh | sh -s .    # into the current directory
 # ============================================================
 
 REPO_URL="https://github.com/d2verb/lara"
@@ -52,12 +53,28 @@ if [ -z "$PROJECT_NAME" ]; then
     error "Project name is required."
 fi
 
-if ! echo "$PROJECT_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+IN_PLACE=""
+if [ "$PROJECT_NAME" = "." ]; then
+    IN_PLACE=1
+elif ! echo "$PROJECT_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
     error "Project name must only contain letters, numbers, hyphens, and underscores."
+elif [ -d "$PROJECT_NAME" ]; then
+    error "Directory '$PROJECT_NAME' already exists."
 fi
 
-if [ -d "$PROJECT_NAME" ]; then
-    error "Directory '$PROJECT_NAME' already exists."
+if [ -n "$IN_PLACE" ] && [ -n "$(ls -A)" ]; then
+    warn "The current directory is not empty."
+    warn "Overwrite replaces compose.yaml, mise.toml, .dockerignore, docker/ and .env, and DELETES src/."
+    warn "If a lara project lived here before, run 'docker compose down -v' afterwards: its old database volume has a different password."
+    ANSWER=""
+    # No TTY (e.g. CI) leaves ANSWER empty, so we abort rather than overwrite unasked
+    if { printf '%sAbort or overwrite? [a/o]: %s' "$BOLD" "$RESET" > /dev/tty; } 2>/dev/null; then
+        read -r ANSWER < /dev/tty || true
+    fi
+    case "$ANSWER" in
+        o|O) ;;
+        *) error "Aborted." ;;
+    esac
 fi
 
 # --- Check prerequisites ---
@@ -80,10 +97,16 @@ info "All prerequisites are ready."
 # --- Create project directory ---
 step "2/6" "Creating project directory..."
 
-PROJECT_DIR="$(pwd)/$PROJECT_NAME"
-# On failure, remove the partially created project directory
-trap 'if [ $? -ne 0 ] && [ -d "$PROJECT_DIR" ]; then warn "Cleaning up..."; rm -rf "$PROJECT_DIR"; fi' EXIT
-mkdir -p "$PROJECT_DIR"
+if [ -n "$IN_PLACE" ]; then
+    PROJECT_DIR="$(pwd)"
+    # laravel new needs an empty src/. No cleanup trap here: it would delete the user's directory.
+    rm -rf "$PROJECT_DIR/src"
+else
+    PROJECT_DIR="$(pwd)/$PROJECT_NAME"
+    # On failure, remove the partially created project directory
+    trap 'if [ $? -ne 0 ] && [ -d "$PROJECT_DIR" ]; then warn "Cleaning up..."; rm -rf "$PROJECT_DIR"; fi' EXIT
+    mkdir -p "$PROJECT_DIR"
+fi
 
 # --- Download templates ---
 step "3/6" "Downloading template files..."
@@ -128,8 +151,9 @@ fi
 # Use `docker run` (not `docker compose run`) to avoid named volume mounts
 # that would make /app non-empty and cause `laravel new` to fail.
 # --entrypoint "" skips entrypoint.sh (which would run config:cache in non-local mode).
-# Docker Compose uses directory name as project name, image = <dirname>-app
-APP_IMAGE="$(basename "$(pwd)")-app"
+# Compose names the image <project>-app, and the project name is the directory name lowercased
+# with invalid characters dropped (MyApp -> myapp). Ask Compose instead of re-implementing that.
+APP_IMAGE="$(docker compose config | sed -n 's/^name: //p')-app"
 mkdir -p src
 # shellcheck disable=SC2086
 # DB_CONNECTION=sqlite prevents laravel new from attempting to connect to PostgreSQL
@@ -202,10 +226,12 @@ parameters:
     level: 5
 PHPSTAN
 
-cat >> .gitignore <<'GITIGNORE'
-docker-compose.override.yaml
-.env
-GITIGNORE
+# Skip lines already there (in-place install into an existing repo, or a re-run)
+# An existing .gitignore may lack a final newline; without this our line would glue onto its last one
+if [ -s .gitignore ] && [ -n "$(tail -c1 .gitignore)" ]; then echo >> .gitignore; fi
+for line in docker-compose.override.yaml .env; do
+    grep -qxF "$line" .gitignore 2>/dev/null || echo "$line" >> .gitignore
+done
 
 info "Laravel project created."
 
@@ -267,6 +293,9 @@ echo "AWS_ENDPOINT=http://rustfs:9000" >> src/.env
 info "Done."
 
 # --- Done ---
+CD_STEP="cd $PROJECT_NAME"
+if [ -n "$IN_PLACE" ]; then CD_STEP=""; fi
+
 cat <<DONE
 
 ${GREEN}============================================================${RESET}
@@ -275,7 +304,7 @@ ${GREEN}============================================================${RESET}
 
   ${BOLD}Next steps:${RESET}
 
-    cd $PROJECT_NAME
+    $CD_STEP
     mise run dev          ${YELLOW}# Start all services${RESET}
     mise run migrate      ${YELLOW}# Run database migrations${RESET}
 
