@@ -162,6 +162,7 @@ cat > src/app/Providers/LaraServiceProvider.php <<'PHP'
 namespace App\Providers;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Support\ServiceProvider;
 
 class LaraServiceProvider extends ServiceProvider
@@ -181,6 +182,11 @@ class LaraServiceProvider extends ServiceProvider
     {
         // Throw on N+1 queries outside production
         Model::preventLazyLoading(! $this->app->isProduction());
+
+        // TLS terminates at the load balancer (ALB, Cloud Run); trust its X-Forwarded-* so URLs stay https.
+        // Assumes the app is reachable only through the LB, otherwise clients can spoof their IP.
+        // Change it here, not in bootstrap/app.php (this runs later and wins).
+        TrustProxies::at('*');
     }
 }
 PHP

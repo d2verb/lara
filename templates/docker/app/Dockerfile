@@ -93,6 +93,8 @@ ENV LOG_CHANNEL=stderr
 # Base image loads no php.ini, so PHP defaults to display_errors=On
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 COPY docker/app/php/php.ini /usr/local/etc/php/conf.d/app-php.ini
+# Code is immutable in the image; skip per-request file stat checks (loaded after app-php.ini, so it wins)
+RUN echo "opcache.validate_timestamps=0" > /usr/local/etc/php/conf.d/zz-opcache-prod.ini
 COPY docker/app/Caddyfile.prod /etc/caddy/Caddyfile
 COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
